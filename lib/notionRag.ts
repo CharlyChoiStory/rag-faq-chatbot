@@ -43,6 +43,50 @@ function toSources(chunks: NotionChunk[]): NotionSource[] {
   }));
 }
 
+function stripKoreanParticle(term: string) {
+  return term.replace(/(으로|에서|에게|께서|까지|부터|처럼|보다|이나|거나|이랑|하고|의|이|가|은|는|을|를|에|와|과|도|만|로|야)$/u, "");
+}
+
+function extractKeywordCandidates(question: string): string[] {
+  const stopwords = new Set([
+    "뭐",
+    "무엇",
+    "어떻게",
+    "있나요",
+    "인가요",
+    "주세요",
+    "알려줘",
+    "궁금해",
+  ]);
+
+  const terms = question
+    .split(/[\s,.;:!?()[\]{}"']+/u)
+    .map((term) => stripKoreanParticle(term.trim()))
+    .map((term) => term.replace(/[^\p{L}\p{N}_-]/gu, ""))
+    .filter((term) => term.length >= 2 && !stopwords.has(term));
+
+  return Array.from(new Set(terms)).slice(0, 6);
+}
+
+function getLexicalScore(question: string, chunk: NotionChunk) {
+  const normalizedQuestion = question.replace(/\s/g, "");
+  const normalizedChunk = `${chunk.page_title} ${chunk.content}`.replace(/\s/g, "");
+  const matches = extractKeywordCandidates(normalizedQuestion).filter((term) =>
+    normalizedChunk.includes(term),
+  );
+
+  return Math.min(0.8, 0.56 + matches.length * 0.08);
+}
+
+function buildKeywordOrFilter(keywords: string[]) {
+  return keywords
+    .flatMap((keyword) => [
+      `page_title.ilike.%${keyword}%`,
+      `content.ilike.%${keyword}%`,
+    ])
+    .join(",");
+}
+
 // ---------------------------------------------------------------------------
 // Multi-query rewriting (same approach as FAQ RAG)
 // ---------------------------------------------------------------------------
@@ -107,20 +151,46 @@ async function retrieveWithFusion(
 
   const allEmbeddings = [originalEmbedding, ...variantEmbeddings];
 
-  const results = await Promise.all(
-    allEmbeddings.map((embedding) =>
+  const keywordCandidates = extractKeywordCandidates(question);
+  const keywordQuery =
+    keywordCandidates.length > 0
+      ? supabase
+          .from("notion_chunks")
+          .select("id,page_id,page_title,page_url,chunk_index,content")
+          .or(buildKeywordOrFilter(keywordCandidates))
+          .order("page_title", { ascending: true })
+          .order("chunk_index", { ascending: true })
+          .limit(candidateCount)
+      : Promise.resolve({ data: [], error: null });
+
+  const [vectorResults, keywordResult] = await Promise.all([
+    Promise.all(allEmbeddings.map((embedding) =>
       supabase.rpc("match_notion_chunks", {
         query_embedding: embedding,
         match_threshold: 0,
         match_count: candidateCount,
       }),
-    ),
-  );
+    )),
+    keywordQuery,
+  ]);
 
   const chunkMap = new Map<string, NotionChunk>();
-  for (const result of results) {
+  for (const result of vectorResults) {
     if (result.error) continue;
     for (const chunk of (result.data ?? []) as NotionChunk[]) {
+      const existing = chunkMap.get(chunk.id);
+      if (!existing || chunk.similarity > existing.similarity) {
+        chunkMap.set(chunk.id, chunk);
+      }
+    }
+  }
+
+  if (!keywordResult.error) {
+    for (const row of (keywordResult.data ?? []) as Omit<NotionChunk, "similarity">[]) {
+      const chunk = {
+        ...row,
+        similarity: getLexicalScore(question, row as NotionChunk),
+      };
       const existing = chunkMap.get(chunk.id);
       if (!existing || chunk.similarity > existing.similarity) {
         chunkMap.set(chunk.id, chunk);

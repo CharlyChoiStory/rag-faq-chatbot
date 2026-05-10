@@ -32,6 +32,13 @@ create table if not exists public.faqs (
 );
 ```
 
+FAQ 적재 스크립트는 같은 질문을 다시 실행해도 중복 저장하지 않도록 `question` 기준 `upsert`를 사용한다. 따라서 다음 unique 제약을 함께 적용한다.
+
+```sql
+create unique index if not exists faqs_question_key
+on public.faqs (question);
+```
+
 ## 4. 검색 성능 인덱스
 
 데이터가 적은 교육용 MVP에서는 인덱스 없이도 동작한다. FAQ가 수백 개 이상이면 인덱스를 추가한다.
@@ -97,7 +104,73 @@ using (is_public = true);
 
 데이터 적재는 서버 스크립트에서 service role key로 처리한다. service role key는 브라우저에 노출하지 않는다.
 
-## 7. 샘플 데이터 형태
+## 7. Notion 교육 자료 테이블
+
+Notion 페이지를 청크 단위로 동기화해 검색하려면 다음 테이블과 검색 함수도 적용한다.
+
+```sql
+create table if not exists public.notion_chunks (
+  id uuid primary key default gen_random_uuid(),
+  page_id text not null,
+  page_title text not null,
+  page_url text,
+  chunk_index int not null,
+  content text not null,
+  embedding vector(1536),
+  last_synced_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists notion_chunks_page_chunk_key
+on public.notion_chunks (page_id, chunk_index);
+
+create index if not exists notion_chunks_embedding_idx
+on public.notion_chunks
+using ivfflat (embedding vector_cosine_ops)
+with (lists = 100);
+```
+
+```sql
+create or replace function public.match_notion_chunks (
+  query_embedding vector(1536),
+  match_threshold float default 0.75,
+  match_count int default 5
+)
+returns table (
+  id uuid,
+  page_id text,
+  page_title text,
+  page_url text,
+  chunk_index int,
+  content text,
+  similarity float
+)
+language sql
+stable
+as $$
+  select
+    notion_chunks.id,
+    notion_chunks.page_id,
+    notion_chunks.page_title,
+    notion_chunks.page_url,
+    notion_chunks.chunk_index,
+    notion_chunks.content,
+    1 - (notion_chunks.embedding <=> query_embedding) as similarity
+  from public.notion_chunks
+  where
+    notion_chunks.embedding is not null
+    and 1 - (notion_chunks.embedding <=> query_embedding) > match_threshold
+  order by notion_chunks.embedding <=> query_embedding
+  limit match_count;
+$$;
+```
+
+```sql
+alter table public.notion_chunks enable row level security;
+```
+
+## 8. 샘플 데이터 형태
 
 ```json
 {
@@ -111,11 +184,10 @@ using (is_public = true);
 }
 ```
 
-## 8. 운영 체크포인트
+## 9. 운영 체크포인트
 
 - Supabase 무료 플랜에서는 용량과 비활성화 정책을 확인한다.
 - 교육용 FAQ 20~500개 수준은 일반적으로 작은 규모다.
 - 공개 테이블은 RLS를 반드시 활성화한다.
 - `service_role` 또는 secret key는 서버에서만 사용한다.
 - embedding 모델 변경 시 `vector(1536)` 차원도 함께 변경해야 한다.
-

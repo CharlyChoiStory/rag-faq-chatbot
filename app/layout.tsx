@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "../public/app.css";
 
 export const metadata: Metadata = {
   title: "FAQ RAG 챗봇",
@@ -13,9 +14,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <head>
-        <link rel="stylesheet" href="/app.css" />
-      </head>
       <body className="bg-paper text-ink">{children}</body>
     </html>
   );
