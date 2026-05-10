@@ -352,6 +352,72 @@ textarea {
   font-weight: 800;
 }
 
+/* ---------------------------------------------------------------------------
+   Tab bar
+--------------------------------------------------------------------------- */
+
+.tab-bar {
+  display: flex;
+  gap: 6px;
+  margin: 24px 0 0;
+  border-bottom: 2px solid var(--line);
+  padding-bottom: 0;
+}
+
+.tab-button {
+  padding: 10px 24px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.4;
+  position: relative;
+  bottom: -2px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.tab-button:hover {
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.tab-active {
+  border-color: var(--line);
+  border-bottom-color: var(--surface);
+  background: var(--surface);
+  color: var(--brand);
+}
+
+/* ---------------------------------------------------------------------------
+   Notion badge
+--------------------------------------------------------------------------- */
+
+.notion-badge {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------------------
+   Notion source preview text
+--------------------------------------------------------------------------- */
+
+.source-preview {
+  display: block;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
 @media (max-width: 820px) {
   .app-container {
     padding: 20px 16px;
