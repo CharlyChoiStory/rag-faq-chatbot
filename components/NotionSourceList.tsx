@@ -11,7 +11,7 @@ export function NotionSourceList({ sources }: NotionSourceListProps) {
 
   return (
     <div className="source-box">
-      <p className="source-title">참고 교육 자료 / 출처</p>
+      <p className="source-title">참고 규정</p>
       <ul className="source-list">
         {unique.map((source) => (
           <li key={`${source.pageId}-${source.chunkIndex}`} className="source-item">

@@ -15,15 +15,24 @@ const welcomeMessage: Message = {
   id: "welcome",
   role: "assistant",
   content:
-    "안녕하세요. Notion에 저장된 교육 자료를 바탕으로 답변해 드릴게요. 궁금한 내용을 편하게 입력해 주세요.",
+    "안녕하세요. 사내 규정집을 확인해 근거가 있는 내용만 안내드릴게요. 휴가, 근태, 비용, 보안, 결재 절차 등을 편하게 물어보세요.",
 };
+
+const exampleQuestions = [
+  "연차는 며칠 전까지 신청해야 해?",
+  "출장비는 언제까지 정산해야 해?",
+  "재택근무 신청 절차 알려줘.",
+  "회사 노트북을 분실하면 어떻게 해야 해?",
+  "개인정보 자료는 어떻게 보관해야 해?",
+  "복리후생비 사용 기준 알려줘.",
+];
 
 function getFriendlyErrorMessage(message: string) {
   if (message.includes("NOTION_API_KEY") || message.includes("Notion")) {
     return "Notion 연동 설정이 아직 완료되지 않았습니다. 관리자에게 문의해 주세요.";
   }
   if (message.includes("SUPABASE") || message.includes("Supabase")) {
-    return "자료 저장소에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    return "규정 검색 저장소에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
   if (message.includes("quota") || message.includes("429")) {
     return "AI 사용량 한도 때문에 지금은 답변을 만들 수 없습니다. 잠시 후 다시 시도해 주세요.";
@@ -60,7 +69,7 @@ export function NotionChatWindow() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/notion-chat", {
+      const response = await fetch("/api/rules-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: trimmed }),
@@ -99,12 +108,30 @@ export function NotionChatWindow() {
 
   return (
     <div className="chat-layout">
-      <div className="notion-badge">
-        Notion 교육 자료 기반 답변 · 자료를 동기화한 시점 기준으로 답변합니다
-      </div>
-
       <div className="chat-panel">
+        <div className="chat-room-header">
+          <div>
+            <p className="chat-room-kicker">Notion 사내 규정집 기반</p>
+            <h2 className="chat-room-title">사내 규정 AI 챗봇</h2>
+          </div>
+          <span className="chat-room-status">근거 기반 답변</span>
+        </div>
+
         <div aria-live="polite" className="message-list">
+          <div className="example-section" aria-label="예시 질문">
+            {exampleQuestions.map((example) => (
+              <button
+                key={example}
+                type="button"
+                className="example-button"
+                onClick={() => void askQuestion(example)}
+                disabled={isLoading}
+              >
+                {example}
+              </button>
+            ))}
+          </div>
+
           <div className="message-stack">
             {messages.map((message) => (
               <article
@@ -116,7 +143,7 @@ export function NotionChatWindow() {
                 }
               >
                 <p className="message-label">
-                  {message.role === "user" ? "내 질문" : "교육 자료 답변"}
+                  {message.role === "user" ? "나" : "규정 챗봇"}
                 </p>
                 <p className="message-text">{message.content}</p>
                 {message.sources && message.sources.length > 0 ? (
@@ -127,8 +154,8 @@ export function NotionChatWindow() {
 
             {isLoading ? (
               <div className="loading-message">
-                <p className="message-label">교육 자료 답변</p>
-                Notion 자료를 검색하고 답변을 준비하고 있습니다...
+                <p className="message-label">규정 챗봇</p>
+                규정집을 확인하고 있어요...
               </div>
             ) : null}
           </div>
@@ -138,7 +165,7 @@ export function NotionChatWindow() {
           {error ? <p className="error-message">{error}</p> : null}
 
           <label htmlFor="notion-question" className="input-label">
-            질문 입력
+            규정 질문 입력
           </label>
           <div className="input-row">
             <textarea
@@ -146,7 +173,7 @@ export function NotionChatWindow() {
               id="notion-question"
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder="예: 1주차 실습 내용이 뭔가요?"
+              placeholder="예: 연차는 며칠 전까지 신청해야 해?"
               rows={2}
               className="question-input"
             />
@@ -155,7 +182,7 @@ export function NotionChatWindow() {
               disabled={isLoading}
               className="send-button"
             >
-              {isLoading ? "준비 중" : "보내기"}
+              {isLoading ? "확인 중" : "전송"}
             </button>
           </div>
         </form>

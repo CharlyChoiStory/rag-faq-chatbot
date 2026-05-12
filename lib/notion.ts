@@ -57,7 +57,7 @@ function blockToText(block: BlockObjectResponse): string {
 // Block / page fetching
 // ---------------------------------------------------------------------------
 
-async function listAllChildren(
+export async function listAllChildren(
   notion: Client,
   blockId: string,
 ): Promise<BlockObjectResponse[]> {

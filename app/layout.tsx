@@ -3,8 +3,8 @@ import "./globals.css";
 import "../public/app.css";
 
 export const metadata: Metadata = {
-  title: "FAQ RAG 챗봇",
-  description: "Notion FAQ와 Supabase pgvector를 사용하는 교육용 RAG 챗봇",
+  title: "사내 규정 AI 챗봇",
+  description: "Notion 사내 규정집과 Supabase pgvector를 사용하는 규정 검색 RAG 챗봇",
 };
 
 export default function RootLayout({

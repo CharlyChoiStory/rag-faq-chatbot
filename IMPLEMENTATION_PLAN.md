@@ -1,156 +1,133 @@
-# Implementation Plan
+# Implementation Plan: 사내 규정집 RAG 챗봇 전환
 
 ## 1. 개발 단계
 
-### Phase 1. 프로젝트 준비
+### Phase 1. 프로젝트 목적 전환
 
-- Next.js 프로젝트 생성
-- 환경변수 구조 작성
-- Supabase 프로젝트 생성
-- OpenAI API Key 준비
-- 샘플 FAQ 데이터 작성
+작업:
 
-완료 기준:
-
-- 로컬 개발 서버 실행
-- `.env.example` 작성
-- Supabase 접속 정보 준비
-
-### Phase 2. Supabase Vector DB 구성
-
-- pgvector 확장 활성화
-- `faqs` 테이블 생성
-- `match_faqs` 함수 생성
-- RLS 정책 추가
-- 샘플 데이터 수동 입력 테스트
+- README/PRD/Architecture를 사내 규정집 챗봇 기준으로 업데이트
+- 기존 교육 FAQ 문구 제거 또는 보조 문서로 이동
+- 앱 제목과 안내 문구를 “사내 규정 AI 챗봇”으로 변경
 
 완료 기준:
 
-- SQL Editor에서 검색 함수가 동작한다.
-- 공개 FAQ만 조회된다.
+- 문서와 화면에서 프로젝트 목적이 일관되게 보인다.
 
-### Phase 3. FAQ 적재 스크립트 개발
+### Phase 2. Notion 규정집 동기화 확인
 
-- Notion CSV 읽기
-- 필수 컬럼 검증
-- content 생성
-- embedding 생성
-- Supabase upsert
-- 적재 결과 로그 출력
+작업:
 
-완료 기준:
-
-- FAQ 20개 이상이 embedding과 함께 저장된다.
-- 누락 필드가 있으면 친절한 오류를 보여준다.
-
-### Phase 4. RAG API 개발
-
-- `/api/chat` 엔드포인트 생성
-- 사용자 질문 validation
-- 질문 embedding 생성
-- `match_faqs` 호출
-- 검색 결과 기반 AI 답변 생성
-- 답변과 sources 반환
+- `.env.local`에 `NOTION_ROOT_PAGE_ID=35e0d17ecf4a801d8166eff8982245a9` 설정
+- Notion integration이 사내 규정집 페이지에 초대되었는지 확인
+- `npm run sync:notion` 실행
+- Supabase `notion_chunks`에 규정 청크가 저장되는지 확인
 
 완료 기준:
 
-- API 테스트에서 질문에 대한 답변과 출처가 반환된다.
+- 약 20개 규정 데이터가 청크로 저장된다.
+- 각 청크에 규정 제목과 Notion URL이 포함된다.
 
-### Phase 5. 챗봇 UI 개발
+### Phase 3. RAG 검색 로직 전환
 
-- 대화 화면
-- 질문 입력창
-- 예시 질문 버튼
-- 답변 로딩 상태
-- 참고 FAQ 목록
-- 오류 메시지
+작업:
 
-완료 기준:
-
-- 브라우저에서 질문/답변이 정상 동작한다.
-- 모바일 화면에서도 사용 가능하다.
-
-### Phase 6. 교육용 마감
-
-- README 작성
-- 강사용 실행 절차 정리
-- 수강생용 실습 순서 정리
-- 테스트 질문 정리
-- 배포 또는 로컬 실행 확인
+- `lib/notionRag.ts`의 시스템 프롬프트를 사내 규정 안내 챗봇으로 수정
+- fallback 문구를 규정집 기준으로 수정
+- 쿼리 확장 프롬프트를 회사 규정 검색에 맞게 수정
+- threshold 기본값을 0.45 전후로 테스트
+- 필요하면 `lib/companyRulesRag.ts`로 파일명 분리
 
 완료 기준:
 
-- 처음 보는 사람이 README만 보고 실행할 수 있다.
+- 대표 규정 질문에 관련 청크가 검색된다.
+- 근거 없는 질문에는 추측하지 않는다.
 
-## 2. 4차시 교육 운영안
+### Phase 4. API 명칭 정리
 
-### 1차시: RAG와 FAQ 데이터 이해
+작업:
 
-- RAG 개념 설명
-- 일반 챗봇과 RAG 챗봇 비교
-- Notion FAQ 템플릿 만들기
-- FAQ 10~20개 작성
+- 빠른 MVP: 기존 `/api/notion-chat` 유지 후 내부 문구만 변경
+- 명확한 구조: `/api/rules-chat` 추가 후 UI를 새 API에 연결
+- response의 `sources` 명칭은 유지 가능
 
-산출물:
+완료 기준:
 
-- Notion FAQ 데이터베이스
-- 샘플 FAQ CSV
+- 브라우저에서 규정 질문에 답변한다.
+- API 응답에 answer와 sources가 포함된다.
 
-### 2차시: Supabase Vector DB 만들기
+### Phase 5. 카카오톡 스타일 UI 개편
 
-- Supabase 프로젝트 생성
-- pgvector 활성화
-- `faqs` 테이블 생성
-- embedding 개념 설명
-- SQL 검색 함수 생성
+작업:
 
-산출물:
+- 기존 탭 UI 제거 또는 숨김
+- 단일 채팅방 화면 구성
+- 사용자 말풍선 오른쪽 정렬
+- AI 말풍선 왼쪽 정렬
+- 노란색/회색 계열 카카오톡 느낌 적용
+- 하단 고정 입력창 구현
+- 예시 질문 버튼을 사내 규정 질문으로 변경
+- 출처 카드를 답변 아래 표시
 
-- Supabase FAQ 테이블
-- 검색 함수
+완료 기준:
 
-### 3차시: FAQ 적재와 검색
+- PC와 모바일에서 카카오톡 대화방처럼 보인다.
+- 입력/응답/로딩/오류 상태가 자연스럽다.
 
-- Codex로 import 스크립트 작성
-- FAQ content 생성
-- embedding 저장
-- 유사도 검색 테스트
-- threshold 조정
+### Phase 6. 검색 품질 테스트 및 튜닝
 
-산출물:
+작업:
 
-- FAQ import 스크립트
-- 검색 테스트 결과
+- 대표 질문 10~20개 작성
+- 검색 결과의 source와 similarity 확인
+- 청크 크기, threshold, keyword fallback 튜닝
+- Notion 원문에서 검색 키워드 보강
 
-### 4차시: 웹 챗봇 완성
+완료 기준:
 
-- 챗봇 UI 구현
-- `/api/chat` 연결
-- 답변 출처 표시
-- 오류 처리
-- 최종 시연
+- 대표 질문 80% 이상에서 올바른 규정 근거가 반환된다.
 
-산출물:
+### Phase 7. 마감 검증
 
-- 실행 가능한 RAG FAQ 챗봇 웹앱
+작업:
 
-## 3. 작업 분해
+- `npm run lint`
+- `npm run build`
+- `.env.local` Git 추적 여부 확인
+- 브라우저 수동 테스트
+- 문서 최신화
+
+완료 기준:
+
+- 빌드 통과
+- 키 노출 없음
+- 시연 가능
+
+## 2. 작업 분해
 
 | 작업 | 난이도 | 담당 | 예상 시간 |
 | --- | --- | --- | --- |
-| Notion FAQ 템플릿 작성 | 낮음 | 강사/수강생 | 30분 |
-| Supabase 프로젝트 생성 | 낮음 | 수강생 | 20분 |
-| SQL 스키마 적용 | 중간 | Codex/수강생 | 30분 |
-| FAQ CSV 정리 | 낮음 | 수강생 | 30분 |
-| embedding 적재 스크립트 | 중간 | Codex | 60분 |
-| RAG API 구현 | 중간 | Codex | 60분 |
-| 챗봇 UI 구현 | 중간 | Codex | 60분 |
-| 테스트 및 개선 | 낮음 | 전체 | 40분 |
+| 문서 목적 전환 | 낮음 | 헤르미/Codex | 30분 |
+| Notion page id/env 확인 | 낮음 | 찰리/Codex | 20분 |
+| 동기화 스크립트 점검 | 중간 | Codex | 40분 |
+| RAG 프롬프트 전환 | 낮음 | Codex | 30분 |
+| API 명칭 정리 | 낮음 | Codex | 30분 |
+| 카카오톡 UI 구현 | 중간 | Codex | 90분 |
+| 검색 품질 테스트 | 중간 | 찰리/Codex | 60분 |
+| 빌드/보안 검증 | 낮음 | Codex | 30분 |
+
+## 3. Codex 작업 순서 추천
+
+1. `COMPANY_RULES_PROJECT_BRIEF.md`와 `PRD.md`를 먼저 읽는다.
+2. 기존 코드에서 Notion RAG 경로를 확인한다.
+3. 문구/프롬프트를 사내 규정집 기준으로 바꾼다.
+4. UI를 단일 카카오톡 스타일 채팅방으로 바꾼다.
+5. 동기화 및 검색 테스트 스크립트를 추가한다.
+6. lint/build를 실행하고 수정한다.
 
 ## 4. 의사결정
 
-- MVP에서는 Notion API 자동 연동을 제외한다.
-- FAQ 원본은 Notion, 검색 저장소는 Supabase로 역할을 나눈다.
-- AI 답변은 반드시 검색된 FAQ를 근거로 제한한다.
-- Supabase service role key는 서버 스크립트에서만 사용한다.
-
+- MVP에서는 기존 `notion_chunks` 테이블을 재사용한다.
+- 별도 DB 분리가 필요해지면 `company_rule_chunks`로 마이그레이션한다.
+- 앱은 공개 FAQ가 아니라 내부 규정 검색용이므로 배포 전 접근 제한을 검토한다.
+- 답변은 반드시 규정집 근거 안으로 제한한다.
