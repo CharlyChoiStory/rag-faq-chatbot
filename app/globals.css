@@ -25,3 +25,17 @@ textarea {
 ::selection {
   background: #cfe7df;
 }
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.typing-cursor::after {
+  content: "▋";
+  display: inline-block;
+  animation: blink 1s step-start infinite;
+  margin-left: 2px;
+  font-size: 0.85em;
+  vertical-align: middle;
+}

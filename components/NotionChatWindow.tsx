@@ -11,6 +11,12 @@ type Message = {
   sources?: NotionSource[];
 };
 
+type StreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "sources"; sources: NotionSource[] }
+  | { type: "done" }
+  | { type: "error"; message: string };
+
 const welcomeMessage: Message = {
   id: "welcome",
   role: "assistant",
@@ -68,6 +74,12 @@ export function NotionChatWindow() {
     setError("");
     setIsLoading(true);
 
+    const assistantId = crypto.randomUUID();
+    setMessages((current) => [
+      ...current,
+      { id: assistantId, role: "assistant", content: "" },
+    ]);
+
     try {
       const response = await fetch("/api/rules-chat", {
         method: "POST",
@@ -75,26 +87,63 @@ export function NotionChatWindow() {
         body: JSON.stringify({ question: trimmed }),
       });
 
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "답변을 가져오지 못했습니다.");
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(
+          (payload as { error?: string }).error ?? "답변을 가져오지 못했습니다.",
+        );
       }
 
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: payload.answer,
-        sources: payload.sources,
-      };
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      setMessages((current) => [...current, assistantMessage]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+
+          let event: StreamEvent;
+          try {
+            event = JSON.parse(raw) as StreamEvent;
+          } catch {
+            continue;
+          }
+
+          if (event.type === "text") {
+            setMessages((current) =>
+              current.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: m.content + event.delta }
+                  : m,
+              ),
+            );
+          } else if (event.type === "sources") {
+            setMessages((current) =>
+              current.map((m) =>
+                m.id === assistantId ? { ...m, sources: event.sources } : m,
+              ),
+            );
+          } else if (event.type === "error") {
+            throw new Error(event.message);
+          }
+        }
+      }
     } catch (caughtError) {
       const message =
         caughtError instanceof Error
           ? caughtError.message
           : "잠시 후 다시 시도해 주세요.";
       setError(getFriendlyErrorMessage(message));
+      setMessages((current) => current.filter((m) => m.id !== assistantId));
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();
@@ -143,21 +192,19 @@ export function NotionChatWindow() {
                 }
               >
                 <p className="message-label">
-                  {message.role === "user" ? "나" : "규정 챗봇"}
+                  {message.role === "user" ? "나" : "AI 종합 답변"}
                 </p>
-                <p className="message-text">{message.content}</p>
+                <p className="message-text">
+                  {message.content}
+                  {message.role === "assistant" && isLoading && message.content === "" ? (
+                    <span className="typing-cursor" aria-hidden="true" />
+                  ) : null}
+                </p>
                 {message.sources && message.sources.length > 0 ? (
                   <NotionSourceList sources={message.sources} />
                 ) : null}
               </article>
             ))}
-
-            {isLoading ? (
-              <div className="loading-message">
-                <p className="message-label">규정 챗봇</p>
-                규정집을 확인하고 있어요...
-              </div>
-            ) : null}
           </div>
         </div>
 

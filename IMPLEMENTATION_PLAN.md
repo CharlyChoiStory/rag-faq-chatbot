@@ -131,3 +131,62 @@
 - 별도 DB 분리가 필요해지면 `company_rule_chunks`로 마이그레이션한다.
 - 앱은 공개 FAQ가 아니라 내부 규정 검색용이므로 배포 전 접근 제한을 검토한다.
 - 답변은 반드시 규정집 근거 안으로 제한한다.
+
+## 5. 생성형 AI PoC 구현 단계
+
+### Phase 8. 생성형 AI mode 설계
+
+작업:
+
+- `qa`, `email`, `notice`, `meeting-summary`, `ideation` mode 정의
+- `lib/generationModes.ts` 추가
+- mode별 system prompt, temperature, retrieval 필요 여부 정의
+
+완료 기준:
+
+- API에서 mode 값을 안전하게 파싱한다.
+- 알 수 없는 mode는 `qa`로 fallback한다.
+
+### Phase 9. API mode 확장
+
+작업:
+
+- `/api/rules-chat` 또는 `/api/notion-chat` request body에 `mode` 추가
+- 기존 `question` validation 유지
+- mode별 프롬프트를 RAG 답변 생성 단계에 전달
+- sources 반환 구조 유지
+
+완료 기준:
+
+- 기존 규정 Q&A가 깨지지 않는다.
+- 이메일/공지문/회의록/아이디어 모드가 다른 출력 형식을 낸다.
+
+### Phase 10. UI 작업 유형 선택
+
+작업:
+
+- 채팅창 상단 또는 입력창 위에 mode 버튼 추가
+- mode별 예시 질문과 placeholder 변경
+- API 요청 body에 `{ mode, question }` 전송
+- 현재 선택된 mode를 화면에 표시
+
+완료 기준:
+
+- 사용자가 5개 작업 유형을 선택할 수 있다.
+- 선택한 mode에 맞는 답변이 생성된다.
+
+### Phase 11. 생성형 기능 테스트
+
+작업:
+
+- 이메일 작성 테스트
+- 공지문 작성 테스트
+- 회의록 요약 테스트
+- 아이디어 생성 테스트
+- 기존 규정 Q&A 회귀 테스트
+
+완료 기준:
+
+- `npm run lint` 통과
+- `npm run build` 통과
+- 테스트 질문 5개 이상 수동 검증

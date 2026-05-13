@@ -7,7 +7,7 @@ type SourceListProps = {
 export function SourceList({ sources }: SourceListProps) {
   return (
     <div className="source-box">
-      <p className="source-title">참고 FAQ / 출처</p>
+      <p className="source-title">참고 FAQ / 출처 원문</p>
       <ul className="source-list">
         {sources.map((source) => (
           <li

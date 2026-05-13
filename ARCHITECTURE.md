@@ -195,3 +195,51 @@ RAG_MATCH_COUNT=5
 - 부서별 권한 필터링
 - 관리자용 검색 품질 대시보드
 - 실제 사내 메신저 연동
+
+## 8. 생성형 AI PoC 확장 아키텍처
+
+기존 RAG 흐름에 `mode` 기반 생성 계층을 추가한다.
+
+```text
+사용자 입력 + mode 선택
+  -> API Route
+  -> mode 설정 확인
+  -> 필요한 경우 규정 RAG 검색
+  -> mode별 system prompt 구성
+  -> LLM 답변/문서 생성
+  -> sources + generated answer 반환
+```
+
+### 8.1 mode 값
+
+```ts
+type AiMode = "qa" | "email" | "notice" | "meeting-summary" | "ideation";
+```
+
+### 8.2 추천 신규 파일
+
+```text
+lib/generationModes.ts
+```
+
+역할:
+
+- mode별 라벨
+- mode별 temperature
+- mode별 retrieval 필요 여부
+- mode별 system prompt
+- mode별 출력 형식 가이드
+
+### 8.3 mode별 검색 사용 여부
+
+- `qa`: 항상 규정 검색 사용
+- `email`: 규정/업무 기준 검색 사용
+- `notice`: 규정/업무 기준 검색 사용
+- `meeting-summary`: PoC에서는 사용자 입력만 요약, 검색은 선택 사항
+- `ideation`: 관련 내부 규정 검색을 보조 근거로 사용
+
+### 8.4 보안 원칙
+
+- API key와 service role key는 서버에서만 사용한다.
+- 생성형 기능에서도 내부 규정 원문과 출처 노출 범위를 확인한다.
+- 장기적으로 온프라미스 LLM/Private LLM 교체를 위해 `lib/openai.ts` 직접 의존을 `lib/llm.ts` 계층으로 추상화할 수 있다.

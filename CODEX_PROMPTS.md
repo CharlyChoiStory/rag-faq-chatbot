@@ -164,3 +164,63 @@ MVP에서는 기존 notion_chunks/match_notion_chunks를 재사용하는 방향�
 
 결과를 한국어 PM 보고 형식으로 정리해줘.
 ```
+
+## 9. 생성형 AI PoC 구현 프롬프트
+
+```text
+/Users/charlychoi2026/Desktop/rag-faq-chatbot 프로젝트에 생성형 AI PoC 기능을 추가해줘.
+
+먼저 다음 문서를 순서대로 읽어:
+1. COMPANY_RULES_PROJECT_BRIEF.md
+2. GENERATIVE_AI_POC_PLAN.md
+3. ARCHITECTURE.md
+4. IMPLEMENTATION_PLAN.md
+5. TEST_PLAN.md
+
+목표:
+- 기존 사내 규정 Q&A 기능은 유지한다.
+- UI에서 작업 유형을 선택할 수 있게 한다.
+- 작업 유형은 qa, email, notice, meeting-summary, ideation 5개다.
+- API 요청 body에 mode를 추가한다.
+- mode별 system prompt와 temperature를 분리한다.
+- 규정 기반 기능은 검색된 출처를 유지한다.
+- 회의록 요약은 사용자가 입력한 내용 안에서만 요약한다.
+
+우선 구현 방식:
+- 새 파일 lib/generationModes.ts를 만든다.
+- 기존 /api/rules-chat 또는 /api/notion-chat의 body parsing에 mode를 추가한다.
+- 기존 RAG 검색 로직을 최대한 재사용한다.
+- components/NotionChatWindow.tsx 또는 현재 사용 중인 채팅 컴포넌트에 mode 선택 버튼을 추가한다.
+
+보안:
+- .env.local 값은 절대 출력하지 마.
+- API key, token, service role key를 읽거나 보여주지 마.
+- 브라우저 코드에 service role key가 노출되지 않게 해.
+
+완료 후 실행:
+- npm run lint
+- npm run build
+- git status --short
+
+결과는 변경 파일, 구현 내용, 테스트 결과, 남은 리스크 중심으로 한국어로 보고해줘.
+```
+
+## 10. 생성형 AI PoC 수동 테스트 프롬프트
+
+```text
+생성형 AI PoC 기능을 수동 테스트해줘.
+
+테스트할 질문:
+1. [qa] 연차는 며칠 전까지 신청해야 해?
+2. [email] 연차 신청 절차를 직원에게 안내하는 이메일을 작성해줘.
+3. [notice] 보안 교육 참석 안내 공지문을 작성해줘.
+4. [meeting-summary] 다음 회의록을 요약하고 결정사항과 할 일을 정리해줘: 회의일시 2026년 5월 12일, 참석자 김팀장/이대리, 논의 연차 신청 절차 안내문 제작, 결정 다음 주까지 초안 작성, 담당 이대리.
+5. [ideation] 직원들이 보안 규정을 쉽게 이해하도록 캠페인 아이디어를 5개 내줘.
+
+각 결과에 대해:
+- mode가 제대로 적용됐는지
+- 근거 없는 사실을 만들지 않았는지
+- 출처가 필요한 경우 표시됐는지
+- 출력 형식이 업무에 바로 쓸 수 있는지
+확인해줘.
+```

@@ -11,7 +11,7 @@ export function NotionSourceList({ sources }: NotionSourceListProps) {
 
   return (
     <div className="source-box">
-      <p className="source-title">참고 규정</p>
+      <p className="source-title">참고 규정 원문 발췌</p>
       <ul className="source-list">
         {unique.map((source) => (
           <li key={`${source.pageId}-${source.chunkIndex}`} className="source-item">
@@ -27,7 +27,7 @@ export function NotionSourceList({ sources }: NotionSourceListProps) {
             ) : (
               <span className="source-question">{source.pageTitle}</span>
             )}
-            <span className="source-preview">{source.contentPreview}…</span>
+            <span className="source-preview">원문 일부: {source.contentPreview}…</span>
             <span>유사도 {Math.round(source.similarity * 100)}%</span>
           </li>
         ))}

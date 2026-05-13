@@ -85,3 +85,26 @@ npm run sync:notion
 ## 현재 프로젝트 상태 메모
 
 기존 코드에는 FAQ 챗봇과 Notion 교육 자료 챗봇 구조가 이미 있습니다. 완전히 새로 만들기보다 기존 `notion_chunks`, `sync-notion.ts`, `notionRag.ts`, `NotionChatWindow.tsx`를 사내 규정집 용도에 맞게 리팩터링하는 방식이 빠릅니다.
+
+## 생성형 AI PoC 확장 방향
+
+기존 사내 규정 RAG 검색 기능 위에 기본 생성형 AI 업무 기능을 PoC로 추가한다.
+
+추가 목표:
+
+- **규정 Q&A**: 현재 기능 유지. 검색된 규정 근거 안에서만 답변한다.
+- **이메일 작성**: 규정 근거를 바탕으로 직원/관리자 대상 이메일 초안을 생성한다.
+- **공지문 작성**: 규정 또는 업무 기준을 바탕으로 사내 공지문 초안을 생성한다.
+- **회의록 요약**: 사용자가 붙여넣은 회의록/업무 메모를 요약하고 결정사항/할 일을 추출한다.
+- **아이디어 생성**: 내부 규정/업무 맥락을 참고해 실행 가능한 아이디어를 제안한다.
+
+상세 구현 계획은 [GENERATIVE_AI_POC_PLAN.md](./GENERATIVE_AI_POC_PLAN.md)를 먼저 읽는다.
+
+권장 PoC 방식:
+
+```text
+기존 /api/rules-chat 또는 /api/notion-chat 요청 body에 mode 추가
+mode = qa | email | notice | meeting-summary | ideation
+```
+
+기존 “규정집에 있는 내용만 근거로 답변” 원칙은 `qa` 모드에 그대로 유지하고, 이메일/공지문/아이디어 모드는 **규정상 사실은 근거 기반, 문체와 구성은 생성 허용**으로 분리한다.

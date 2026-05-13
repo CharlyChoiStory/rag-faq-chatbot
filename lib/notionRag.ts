@@ -1,9 +1,45 @@
 import { chatModel, createEmbeddings, getOpenAIClient, rewriteModel } from "@/lib/openai";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
-import type { NotionChunk, NotionChatResponse, NotionSource } from "@/types/notion";
+import type { NotionChunk, NotionSource } from "@/types/notion";
+
+export type NotionStreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "sources"; sources: NotionSource[] }
+  | { type: "done" }
+  | { type: "error"; message: string };
 
 const fallbackAnswer =
   "사내 규정집에서 이 질문에 답할 충분한 근거를 찾지 못했습니다. 추측해서 안내할 수 없으니 담당 부서에 확인해 주세요.";
+
+// ---------------------------------------------------------------------------
+// In-memory LRU cache (TTL 5 min, max 100 entries)
+// ---------------------------------------------------------------------------
+
+type CacheEntry = { answer: string; sources: NotionSource[]; expiresAt: number };
+const _cache = new Map<string, CacheEntry>();
+const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_MAX = 100;
+
+function getCached(key: string): CacheEntry | null {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { _cache.delete(key); return null; }
+  _cache.delete(key);
+  _cache.set(key, entry);
+  return entry;
+}
+
+function setCached(key: string, answer: string, sources: NotionSource[]) {
+  if (_cache.size >= CACHE_MAX) {
+    const oldest = _cache.keys().next().value;
+    if (oldest !== undefined) _cache.delete(oldest);
+  }
+  _cache.set(key, { answer, sources, expiresAt: Date.now() + CACHE_TTL });
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 const keywordExpansions: Record<string, string[]> = {
   반바지: ["복장", "착용", "의류", "출근복장", "근무복장"],
@@ -15,10 +51,6 @@ const keywordExpansions: Record<string, string[]> = {
   출근해: ["출근", "복장", "착용"],
   출근: ["복장", "착용", "근무복장"],
 };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function toPositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number(value);
@@ -60,14 +92,7 @@ function stripKoreanParticle(term: string) {
 
 function extractKeywordCandidates(question: string): string[] {
   const stopwords = new Set([
-    "뭐",
-    "무엇",
-    "어떻게",
-    "있나요",
-    "인가요",
-    "주세요",
-    "알려줘",
-    "궁금해",
+    "뭐", "무엇", "어떻게", "있나요", "인가요", "주세요", "알려줘", "궁금해",
   ]);
 
   const terms = question
@@ -89,7 +114,6 @@ function getLexicalScore(question: string, chunk: NotionChunk) {
   const matches = extractKeywordCandidates(question).filter((term) =>
     normalizedChunk.includes(term),
   );
-
   return Math.min(0.92, 0.5 + matches.length * 0.1);
 }
 
@@ -103,9 +127,8 @@ function buildKeywordOrFilter(keywords: string[]) {
 }
 
 // ---------------------------------------------------------------------------
-// Multi-query rewriting for company rule retrieval
+// Multi-query rewriting
 // ---------------------------------------------------------------------------
-
 async function generateQueryVariants(question: string): Promise<string[]> {
   const openai = getOpenAIClient();
   try {
@@ -147,25 +170,16 @@ async function generateQueryVariants(question: string): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Multi-query retrieval with score fusion
+// Multi-query retrieval — batches all embeddings in one API call.
 // ---------------------------------------------------------------------------
-
 async function retrieveWithFusion(
   question: string,
   candidateCount: number,
 ): Promise<NotionChunk[]> {
   const supabase = getSupabaseServerClient();
 
-  const [queryVariants, [originalEmbedding]] = await Promise.all([
-    generateQueryVariants(question),
-    createEmbeddings([question]),
-  ]);
-
-  const variantTexts = queryVariants.slice(1);
-  const variantEmbeddings =
-    variantTexts.length > 0 ? await createEmbeddings(variantTexts) : [];
-
-  const allEmbeddings = [originalEmbedding, ...variantEmbeddings];
+  const queryVariants = await generateQueryVariants(question);
+  const allEmbeddings = await createEmbeddings(queryVariants);
 
   const keywordCandidates = extractKeywordCandidates(question);
   const keywordQuery =
@@ -218,12 +232,19 @@ async function retrieveWithFusion(
 }
 
 // ---------------------------------------------------------------------------
-// Public entry point
+// Public streaming entry point
 // ---------------------------------------------------------------------------
-
-export async function answerNotionQuestion(
+export async function* streamNotionAnswer(
   question: string,
-): Promise<NotionChatResponse> {
+): AsyncGenerator<NotionStreamEvent> {
+  const cached = getCached(question);
+  if (cached) {
+    yield { type: "text", delta: cached.answer };
+    yield { type: "sources", sources: cached.sources };
+    yield { type: "done" };
+    return;
+  }
+
   const matchThreshold = toThreshold(process.env.RAG_MATCH_THRESHOLD, 0.45);
   const matchCount = toPositiveInteger(process.env.RAG_MATCH_COUNT, 5);
   const candidateCount = Math.max(matchCount * 4, 20);
@@ -236,13 +257,17 @@ export async function answerNotionQuestion(
     .slice(0, matchCount);
 
   if (matchedChunks.length === 0) {
-    return { answer: fallbackAnswer, sources: [] };
+    setCached(question, fallbackAnswer, []);
+    yield { type: "text", delta: fallbackAnswer };
+    yield { type: "sources", sources: [] };
+    yield { type: "done" };
+    return;
   }
 
   const openai = getOpenAIClient();
   const context = buildContext(matchedChunks);
 
-  const response = await openai.responses.create({
+  const stream = openai.responses.stream({
     model: chatModel,
     input: [
       {
@@ -280,8 +305,18 @@ export async function answerNotionQuestion(
     ],
   });
 
-  return {
-    answer: response.output_text?.trim() || fallbackAnswer,
-    sources: toSources(matchedChunks),
-  };
+  let fullText = "";
+
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta") {
+      fullText += event.delta;
+      yield { type: "text", delta: event.delta };
+    }
+  }
+
+  const sources = toSources(matchedChunks);
+  setCached(question, fullText || fallbackAnswer, sources);
+
+  yield { type: "sources", sources };
+  yield { type: "done" };
 }

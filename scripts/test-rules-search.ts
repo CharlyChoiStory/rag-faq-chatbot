@@ -3,7 +3,18 @@ import { loadEnvConfig } from "@next/env";
 
 loadEnvConfig(path.resolve(process.cwd()));
 
-import { answerNotionQuestion } from "../lib/notionRag";
+import { streamNotionAnswer } from "../lib/notionRag";
+import type { NotionSource } from "../types/notion";
+
+async function answerNotionQuestion(question: string) {
+  let answer = "";
+  let sources: NotionSource[] = [];
+  for await (const event of streamNotionAnswer(question)) {
+    if (event.type === "text") answer += event.delta;
+    else if (event.type === "sources") sources = event.sources;
+  }
+  return { answer, sources };
+}
 
 const questions = [
   "연차는 며칠 전까지 신청해야 해?",

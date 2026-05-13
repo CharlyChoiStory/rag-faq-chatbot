@@ -7,14 +7,16 @@ export const chatModel = process.env.OPENAI_CHAT_MODEL ?? "gpt-5.2";
 
 export const rewriteModel = process.env.OPENAI_REWRITE_MODEL ?? "gpt-4o-mini";
 
-export function getOpenAIClient() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY 환경변수가 필요합니다.");
-  }
+let _client: OpenAI | null = null;
 
-  return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+export function getOpenAIClient(): OpenAI {
+  if (!_client) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY 환경변수가 필요합니다.");
+    }
+    _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return _client;
 }
 
 export async function createEmbedding(input: string): Promise<number[]> {

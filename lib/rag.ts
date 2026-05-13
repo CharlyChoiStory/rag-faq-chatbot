@@ -6,17 +6,45 @@ import {
 } from "@/lib/openai";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import type { MatchedFaq } from "@/types/faq";
-import type { ChatResponse, ChatSource } from "@/types/chat";
+import type { ChatSource } from "@/types/chat";
+
+export type RagStreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "sources"; sources: ChatSource[] }
+  | { type: "done" }
+  | { type: "error"; message: string };
 
 const fallbackAnswer =
   "확인된 FAQ 자료 안에서는 이 질문에 대한 충분한 근거를 찾지 못했습니다. 교육 운영 담당자에게 문의해 주세요.";
 
 // ---------------------------------------------------------------------------
+// In-memory LRU cache (TTL 5 min, max 100 entries)
+// ---------------------------------------------------------------------------
+
+type CacheEntry = { answer: string; sources: ChatSource[]; expiresAt: number };
+const _cache = new Map<string, CacheEntry>();
+const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_MAX = 100;
+
+function getCached(key: string): CacheEntry | null {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { _cache.delete(key); return null; }
+  _cache.delete(key);
+  _cache.set(key, entry); // move to end (LRU)
+  return entry;
+}
+
+function setCached(key: string, answer: string, sources: ChatSource[]) {
+  if (_cache.size >= CACHE_MAX) {
+    const oldest = _cache.keys().next().value;
+    if (oldest !== undefined) _cache.delete(oldest);
+  }
+  _cache.set(key, { answer, sources, expiresAt: Date.now() + CACHE_TTL });
+}
+
+// ---------------------------------------------------------------------------
 // Synonym groups for keyword-based re-ranking boost.
-// queryKeywords: words that trigger the boost when found in the user's question.
-// faqKeywords:   words that must appear in the FAQ text for the boost to apply.
-// faqCategories: FAQ categories that also qualify for the boost.
-// boost:         amount added to the raw similarity score (capped at 1.0).
 // ---------------------------------------------------------------------------
 type SynonymGroup = {
   queryKeywords: string[];
@@ -192,8 +220,7 @@ function toSources(faqs: MatchedFaq[]): ChatSource[] {
 }
 
 // ---------------------------------------------------------------------------
-// Query rewriting — generates synonym/paraphrase variants via a fast LLM.
-// Failures silently fall back to the original question only.
+// Query rewriting
 // ---------------------------------------------------------------------------
 async function generateQueryVariants(question: string): Promise<string[]> {
   const openai = getOpenAIClient();
@@ -242,9 +269,7 @@ async function generateQueryVariants(question: string): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Multi-query retrieval with score fusion.
-// Embeds the original question and LLM variants in one batch call, then runs
-// all Supabase RPCs in parallel and merges by keeping the max similarity.
+// Multi-query retrieval — batches all embeddings in one API call.
 // ---------------------------------------------------------------------------
 async function retrieveWithFusion(
   question: string,
@@ -252,18 +277,9 @@ async function retrieveWithFusion(
 ): Promise<MatchedFaq[]> {
   const supabase = getSupabaseServerClient();
 
-  // Rewrite and embed original in parallel — total wait = max(rewrite, embed).
-  const [queryVariants, [originalEmbedding]] = await Promise.all([
-    generateQueryVariants(question),
-    createEmbeddings([question]),
-  ]);
-
-  // Embed only the LLM-generated variants (original already embedded above).
-  const variantTexts = queryVariants.slice(1);
-  const variantEmbeddings =
-    variantTexts.length > 0 ? await createEmbeddings(variantTexts) : [];
-
-  const allEmbeddings = [originalEmbedding, ...variantEmbeddings];
+  // Get rewritten variants first, then embed all queries in one batch call.
+  const queryVariants = await generateQueryVariants(question);
+  const allEmbeddings = await createEmbeddings(queryVariants);
 
   // Fan out all Supabase vector searches in parallel.
   const results = await Promise.all(
@@ -276,7 +292,7 @@ async function retrieveWithFusion(
     ),
   );
 
-  // Merge: per FAQ id, keep the highest similarity score across all queries.
+  // Merge: keep the highest similarity score per FAQ id.
   const faqMap = new Map<string, MatchedFaq>();
   for (const result of results) {
     if (result.error) continue;
@@ -292,9 +308,20 @@ async function retrieveWithFusion(
 }
 
 // ---------------------------------------------------------------------------
-// Public entry point
+// Public streaming entry point
 // ---------------------------------------------------------------------------
-export async function answerQuestion(question: string): Promise<ChatResponse> {
+export async function* streamAnswer(
+  question: string,
+): AsyncGenerator<RagStreamEvent> {
+  // Cache hit: return immediately without any LLM calls.
+  const cached = getCached(question);
+  if (cached) {
+    yield { type: "text", delta: cached.answer };
+    yield { type: "sources", sources: cached.sources };
+    yield { type: "done" };
+    return;
+  }
+
   const matchThreshold = toThreshold(process.env.RAG_MATCH_THRESHOLD, 0.5);
   const matchCount = toPositiveInteger(process.env.RAG_MATCH_COUNT, 5);
   const candidateCount = Math.max(matchCount * 4, 20);
@@ -306,13 +333,17 @@ export async function answerQuestion(question: string): Promise<ChatResponse> {
   );
 
   if (matchedFaqs.length === 0) {
-    return { answer: fallbackAnswer, sources: [] };
+    setCached(question, fallbackAnswer, []);
+    yield { type: "text", delta: fallbackAnswer };
+    yield { type: "sources", sources: [] };
+    yield { type: "done" };
+    return;
   }
 
   const openai = getOpenAIClient();
   const context = buildContext(matchedFaqs);
 
-  const response = await openai.responses.create({
+  const stream = openai.responses.stream({
     model: chatModel,
     input: [
       {
@@ -350,8 +381,18 @@ export async function answerQuestion(question: string): Promise<ChatResponse> {
     ],
   });
 
-  return {
-    answer: response.output_text?.trim() || fallbackAnswer,
-    sources: toSources(matchedFaqs),
-  };
+  let fullText = "";
+
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta") {
+      fullText += event.delta;
+      yield { type: "text", delta: event.delta };
+    }
+  }
+
+  const sources = toSources(matchedFaqs);
+  setCached(question, fullText || fallbackAnswer, sources);
+
+  yield { type: "sources", sources };
+  yield { type: "done" };
 }

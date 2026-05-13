@@ -118,3 +118,38 @@ UI는 카카오톡 스타일로 바꿔줘.
 - `sync:notion`, `sync:rules`, `test:rules-search`는 OpenAI/Supabase/Notion API를 실제 호출할 수 있다.
 - 내부 규정 원문과 secret key는 공개 저장소에 올리지 않는다.
 - 배포 전에는 인증/접근 제한을 검토한다.
+
+## 10. 생성형 AI PoC 바로 시작 명령/프롬프트
+
+VSCode에서 프로젝트 열기:
+
+```bash
+cd /Users/charlychoi2026/Desktop/rag-faq-chatbot
+code .
+```
+
+Codex에게 바로 줄 프롬프트:
+
+```text
+이 프로젝트에 생성형 AI PoC 기능을 추가해줘.
+먼저 GENERATIVE_AI_POC_PLAN.md, COMPANY_RULES_PROJECT_BRIEF.md, ARCHITECTURE.md, IMPLEMENTATION_PLAN.md, TEST_PLAN.md를 읽어.
+
+기존 사내 규정 Q&A는 유지하고, 다음 작업 유형을 추가해줘:
+- qa: 규정 질문
+- email: 규정 기반 이메일 작성
+- notice: 규정 기반 공지문 작성
+- meeting-summary: 회의록/업무 메모 요약
+- ideation: 사내 업무 개선 아이디어 생성
+
+빠른 PoC 방식으로 기존 API request body에 mode를 추가하고, mode별 프롬프트와 temperature를 분리해줘.
+UI에는 작업 유형 선택 버튼과 mode별 예시 질문/placeholder를 추가해줘.
+.env.local 값은 절대 출력하지 말고, 작업 후 npm run lint와 npm run build를 실행해줘.
+```
+
+검증 명령:
+
+```bash
+npm run lint
+npm run build
+git status --short --branch
+```
